@@ -1,0 +1,316 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../server/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OptionInputType {
+  SELECT
+  NUMBER
+  TEXT
+}
+
+enum PriceRuleType {
+  UNIT_PRICE
+  FLAT_FEE
+  PERCENT_ADJUST
+  MINIMUM_CHARGE
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_REVIEW
+  PAID
+  IN_PRODUCTION
+  READY
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentSlipStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ArtworkFileStatus {
+  UPLOADED
+  APPROVED
+  NEEDS_REVISION
+}
+
+enum AdminRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  options    ProductOption[]
+  priceRules PriceRule[]
+  quoteItems QuoteItem[]
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+model ProductOption {
+  id         String          @id @default(cuid())
+  productId  String
+  code       String
+  name       String
+  inputType  OptionInputType @default(SELECT)
+  isRequired Boolean         @default(true)
+  sortOrder  Int             @default(0)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  product Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values  ProductOptionValue[]
+
+  @@unique([productId, code])
+  @@map("product_options")
+}
+
+model ProductOptionValue {
+  id        String   @id @default(cuid())
+  optionId  String
+  code      String
+  label     String
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  option     ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  priceRules PriceRule[]
+
+  @@unique([optionId, code])
+  @@map("product_option_values")
+}
+
+// Rules are evaluated by ascending priority; a rule tied to an option value only
+// applies when that value is selected, and quantity bounds are inclusive.
+model PriceRule {
+  id            String        @id @default(cuid())
+  productId     String
+  optionValueId String?
+  name          String
+  type          PriceRuleType
+  amount        Decimal       @db.Decimal(12, 2)
+  minQuantity   Int?
+  maxQuantity   Int?
+  priority      Int           @default(0)
+  isActive      Boolean       @default(true)
+  validFrom     DateTime?
+  validUntil    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  product     Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  optionValue ProductOptionValue? @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+
+  @@index([productId, isActive])
+  @@map("price_rules")
+}
+
+model Quote {
+  id              String      @id @default(cuid())
+  quoteNumber     String      @unique
+  status          QuoteStatus @default(DRAFT)
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerCompany String?
+  subtotal        Decimal     @db.Decimal(12, 2)
+  discount        Decimal     @default(0) @db.Decimal(12, 2)
+  vat             Decimal     @default(0) @db.Decimal(12, 2)
+  total           Decimal     @db.Decimal(12, 2)
+  validUntil      DateTime?
+  note            String?
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  createdBy AdminUser?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items     QuoteItem[]
+  order     Order?
+
+  @@index([status])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id        String  @id @default(cuid())
+  quoteId   String
+  productId String?
+  // Name, options and prices are snapshots so the quote stays unchanged when
+  // the catalogue or price rules are edited later.
+  productName     String
+  selectedOptions Json
+  quantity        Int
+  unitPrice       Decimal @db.Decimal(12, 2)
+  lineTotal       Decimal @db.Decimal(12, 2)
+
+  quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@map("quote_items")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  quoteId         String?     @unique
+  status          OrderStatus @default(PENDING_PAYMENT)
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerCompany String?
+  shippingAddress String?
+  subtotal        Decimal     @db.Decimal(12, 2)
+  discount        Decimal     @default(0) @db.Decimal(12, 2)
+  shippingFee     Decimal     @default(0) @db.Decimal(12, 2)
+  vat             Decimal     @default(0) @db.Decimal(12, 2)
+  total           Decimal     @db.Decimal(12, 2)
+  note            String?
+  paidAt          DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  quote        Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  paymentSlips PaymentSlip[]
+  artworkFiles ArtworkFile[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String?
+  // Snapshot for the same reason as QuoteItem.
+  productName     String
+  selectedOptions Json
+  quantity        Int
+  unitPrice       Decimal @db.Decimal(12, 2)
+  lineTotal       Decimal @db.Decimal(12, 2)
+
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  artworkFiles ArtworkFile[]
+
+  @@map("order_items")
+}
+
+model PaymentSlip {
+  id           String            @id @default(cuid())
+  orderId      String
+  storageKey   String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  amount       Decimal           @db.Decimal(12, 2)
+  bankName     String?
+  transferAt   DateTime?
+  status       PaymentSlipStatus @default(PENDING)
+  rejectReason String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime          @default(now())
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewedBy AdminUser? @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([status])
+  @@map("payment_slips")
+}
+
+model ArtworkFile {
+  id           String            @id @default(cuid())
+  orderId      String
+  orderItemId  String?
+  storageKey   String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  version      Int               @default(1)
+  status       ArtworkFileStatus @default(UPLOADED)
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime          @default(now())
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem  OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  reviewedBy AdminUser? @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("artwork_files")
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         AdminRole @default(STAFF)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  quotes          Quote[]
+  reviewedSlips   PaymentSlip[]
+  reviewedArtwork ArtworkFile[]
+  auditLogs       AuditLog[]
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  actor AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
