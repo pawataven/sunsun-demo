@@ -1,0 +1,26 @@
+{
+  "name": "sunsun-demo",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@arkenv/nuxt": "1.0.0-rc.5",
+    "@csrf-armor/nuxt": "1.2.2",
+    "@dargmuesli/nuxt-cookie-control": "9.3.11",
+    "@nuxt/eslint": "1.17.0",
+    "@nuxt/fonts": "1.2.0",
+    "@nuxt/icon": "2.6.1",
+    "@nuxt/image": "2.2.0",
+    "@nuxt/kit": "^4.6.2",
+    "eslint": "^10.13.0",
+    "nuxt": "^4.6.2",
+    "vue": "^3.5.44",
+    "vue-router": "^5.4.0"
+  }
+}
