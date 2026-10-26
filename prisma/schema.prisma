@@ -40,8 +40,8 @@ enum OrderStatus {
 }
 
 enum PaymentSlipStatus {
-  PENDING
-  APPROVED
+  VERIFIED
+  NEEDS_REVIEW
   REJECTED
 }
 
@@ -183,6 +183,8 @@ model QuoteItem {
 model Order {
   id              String      @id @default(cuid())
   orderNumber     String      @unique
+  // Unguessable key for the customer's order URL; orderNumber is for people to read.
+  accessToken     String      @unique
   quoteId         String?     @unique
   status          OrderStatus @default(PENDING_PAYMENT)
   customerName    String
@@ -204,11 +206,28 @@ model Order {
   quote        Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   items        OrderItem[]
   paymentSlips PaymentSlip[]
+  slipAttempts SlipAttempt[]
+  events       OrderEvent[]
   artworkFiles ArtworkFile[]
 
   @@index([status])
   @@index([createdAt])
   @@map("orders")
+}
+
+model OrderEvent {
+  id         String       @id @default(cuid())
+  orderId    String
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actor      String
+  reason     String?
+  createdAt  DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
 }
 
 model OrderItem {
@@ -232,15 +251,20 @@ model OrderItem {
 model PaymentSlip {
   id           String            @id @default(cuid())
   orderId      String
-  storageKey   String
-  originalName String
-  mimeType     String
-  sizeBytes    Int
-  amount       Decimal           @db.Decimal(12, 2)
+  // Null only for slips uploaded before EasySlip verification; every verified slip has one.
+  transRef     String?           @unique
+  amountSatang Int
+  slipDate     DateTime?
+  status       PaymentSlipStatus @default(NEEDS_REVIEW)
+  reason       String?
+  // Holds the sender's name and account number, so it must only ever be shown to admins.
+  rawResponse  Json?
+  // Files are no longer stored; these columns only describe slips from before verification.
+  storageKey   String?
+  originalName String?
+  mimeType     String?
+  sizeBytes    Int?
   bankName     String?
-  transferAt   DateTime?
-  status       PaymentSlipStatus @default(PENDING)
-  rejectReason String?
   reviewedById String?
   reviewedAt   DateTime?
   createdAt    DateTime          @default(now())
@@ -251,6 +275,19 @@ model PaymentSlip {
   @@index([orderId])
   @@index([status])
   @@map("payment_slips")
+}
+
+model SlipAttempt {
+  id         String   @id @default(cuid())
+  orderId    String
+  resultCode String
+  createdAt  DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([createdAt])
+  @@map("slip_attempts")
 }
 
 model ArtworkFile {

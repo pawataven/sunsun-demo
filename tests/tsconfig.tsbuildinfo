@@ -1,0 +1,1 @@
+{"root":["./fixtures/easyslip.ts","./integration/global-setup.ts","./integration/slip-submission.test.ts","./integration/test-database.ts","./unit/easyslip.test.ts","./unit/pricing.test.ts","./unit/slip-file.test.ts","./unit/slip-verification.test.ts","../vitest.config.ts","../.nuxt/types/nitro.d.ts"],"version":"6.0.3"}
